@@ -158,6 +158,6 @@ bb maint
 
 ## License
 
-Copyright 2024 Latacora
+Copyright Latacora
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
