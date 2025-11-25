@@ -1,6 +1,6 @@
 {:paths ["src" "resources"]
  :deps
- {org.clojure/clojure {:mvn/version "1.12.2"}
+ {org.clojure/clojure {:mvn/version "1.12.3"}
 
   ;; Transit serialization
   com.cognitect/transit-clj {:mvn/version "1.0.333"}
@@ -9,7 +9,7 @@
   io.github.erdtman/java-json-canonicalization {:mvn/version "1.1"}
 
   ;; Compression (determinism under investigation)
-  com.github.luben/zstd-jni {:mvn/version "1.5.7-4"}}
+  com.github.luben/zstd-jni {:mvn/version "1.5.7-6"}}
 
  :aliases
  {:dev
