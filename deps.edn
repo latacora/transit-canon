@@ -1,0 +1,25 @@
+{:paths ["src" "resources"]
+ :deps
+ {org.clojure/clojure {:mvn/version "1.12.2"}
+
+  ;; Transit serialization
+  com.cognitect/transit-clj {:mvn/version "1.0.333"}
+
+  ;; JSON canonicalization (RFC 8785)
+  io.github.erdtman/java-json-canonicalization {:mvn/version "1.1"}
+
+  ;; Compression (determinism under investigation)
+  com.github.luben/zstd-jni {:mvn/version "1.5.7-4"}}
+
+ :aliases
+ {:dev
+  {:extra-paths ["test"]
+   :jvm-opts ["--enable-native-access=ALL-UNNAMED"]
+   :extra-deps
+   {org.clojure/test.check {:mvn/version "1.1.1"}
+    com.gfredericks/test.chuck {:mvn/version "0.2.15"}}}
+
+  :test
+  {:main-opts ["-m" "kaocha.runner"]
+   :extra-deps
+   {lambdaisland/kaocha {:mvn/version "1.91.1392"}}}}}

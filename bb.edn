@@ -1,0 +1,22 @@
+{:tasks
+ {test
+  {:doc "Run tests, passing additional arguments to kaocha"
+   :task (apply clojure "-M:dev:test" *command-line-args*)}
+
+  -clj-kondo
+  {:doc "Run clj-kondo"
+   :task (shell "clj-kondo --lint src test")}
+
+  -splint
+  {:doc "Run splint linter"
+   :extra-deps {io.github.noahtheduke/splint {:mvn/version "1.21.0"}}
+   :task noahtheduke.splint/-main}
+
+  lint
+  {:doc "Run all linters (clj-kondo and splint)"
+   :depends [-clj-kondo -splint]
+   :task (println "All linting complete.")}
+
+  maint
+  {:doc "Check for outdated dependencies using antq"
+   :task (shell "clojure -Sdeps '{:deps {com.github.liquidz/antq {:mvn/version \"RELEASE\"}}}' -M -m antq.core")}}}
