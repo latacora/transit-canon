@@ -60,14 +60,14 @@
        (gen/map canonical-key-gen inner-gen)]))
    serializable-scalar-gen))
 
-(deftest roundtrip-property
+(deftest ^:generative roundtrip-property
   (checking "Serialization roundtrip preserves equality" 500
     [x serializable-gen]
     (let [result (-> x canon/serialize canon/deserialize)]
       (is (= x result)
           (str "Roundtrip failed for: " (pr-str x))))))
 
-(deftest determinism-property
+(deftest ^:generative determinism-property
   (checking "Same value always serializes to same bytes" 500
     [x serializable-gen]
     (let [bytes1 (canon/serialize x)
@@ -75,7 +75,7 @@
       (is (java.util.Arrays/equals bytes1 bytes2)
           (str "Non-deterministic serialization for: " (pr-str x))))))
 
-(deftest map-canonicalization-property
+(deftest ^:generative map-canonicalization-property
   (checking "Maps with same entries serialize identically" 200
     [entries (gen/vector-distinct-by first
                                      (gen/tuple canonical-key-gen serializable-scalar-gen)
@@ -88,7 +88,7 @@
       (is (java.util.Arrays/equals (canon/serialize m2) (canon/serialize m3))
           "Different construction method should produce same bytes"))))
 
-(deftest nested-map-canonicalization-property
+(deftest ^:generative nested-map-canonicalization-property
   (checking "Nested maps are also canonical" 100
     [m canonical-map-gen]
     (when (and (map? m) (seq m))  ; Skip empty maps (shuffle nil fails)
@@ -96,7 +96,7 @@
         (is (java.util.Arrays/equals (canon/serialize m)
                                      (canon/serialize reconstructed)))))))
 
-(deftest set-canonicalization-property
+(deftest ^:generative set-canonicalization-property
   (checking "Sets with same elements serialize identically" 200
     [elements (gen/vector serializable-scalar-gen 1 10)]
     (let [s1 (set elements)
@@ -105,7 +105,7 @@
       (is (java.util.Arrays/equals (canon/serialize s1) (canon/serialize s2)))
       (is (java.util.Arrays/equals (canon/serialize s2) (canon/serialize s3))))))
 
-(deftest set-roundtrip-property
+(deftest ^:generative set-roundtrip-property
   (checking "Sets roundtrip correctly" 200
     [elements (gen/vector-distinct serializable-scalar-gen {:min-elements 0 :max-elements 10})]
     (let [s (set elements)
@@ -113,7 +113,7 @@
       (is (set? result) "Sets deserialize as sets")
       (is (= s result) "Elements are preserved"))))
 
-(deftest metadata-ignored-property
+(deftest ^:generative metadata-ignored-property
   (checking "Metadata is ignored in serialization" 100
     [v (gen/vector serializable-scalar-gen)
      meta1 (gen/map gen/keyword gen/string)
@@ -123,14 +123,14 @@
       (is (java.util.Arrays/equals (canon/serialize v1) (canon/serialize v2))
           "Different metadata should produce same bytes"))))
 
-(deftest compression-determinism-property
+(deftest ^:generative compression-determinism-property
   (checking "Compression is deterministic" 200
     [x serializable-gen]
     (let [results (repeatedly 5 #(vec (canon/serialize x)))]
       (is (apply = results)
           (str "Non-deterministic compression for: " (pr-str x))))))
 
-(deftest uncompressed-determinism-property
+(deftest ^:generative uncompressed-determinism-property
   (checking "Uncompressed serialization is also deterministic" 200
     [x serializable-gen]
     (let [results (repeatedly 5 #(vec (canon/serialize x {:compress? false})))]
