@@ -65,11 +65,11 @@
       (is (java.util.Arrays/equals (canon/serialize s1)
                                    (canon/serialize s3)))))
 
-  (testing "Sets deserialize as vectors but with same elements"
+  (testing "Sets roundtrip correctly"
     (let [s #{:a :b :c}
           result (-> s canon/serialize canon/deserialize)]
-      (is (vector? result) "Sets deserialize as vectors")
-      (is (= (set s) (set result)) "Elements are preserved"))))
+      (is (set? result) "Sets deserialize as sets")
+      (is (= s result) "Sets are equal"))))
 
 (deftest metadata-is-ignored
   (testing "Values with different metadata serialize identically"

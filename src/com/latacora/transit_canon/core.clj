@@ -16,7 +16,7 @@
 
   This library pre-normalizes data structures before Transit encoding:
   - Maps are sorted by a canonical key comparator
-  - Sets are converted to sorted vectors
+  - Sets are serialized with elements in canonical order
   - Integers are converted to BigInt to preserve type distinction
 
   ## API
@@ -29,7 +29,6 @@
 
   - Metadata is stripped (intentional for canonicalization)
   - Plain integers deserialize as BigInt
-  - Sets deserialize as vectors (same elements, different type)
   - Custom types may not compare correctly"
   (:require
    [cognitect.transit :as transit]
@@ -46,12 +45,27 @@
    :compression-level 3
    :strict? false})
 
+;; Custom Transit write handler for sets that outputs elements in canonical order.
+;; This handler is passed to our writer instance only - it doesn't affect global state
+;; or other Transit users.
+(def ^:private canonical-set-handler
+  (transit/write-handler
+   (constantly "set")
+   (fn [s]
+     ;; Sort elements by their canonical serialization for deterministic output
+     (let [sort-key (requiring-resolve 'com.latacora.transit-canon.impl.comparators/value->sort-key)]
+       (vec (sort-by sort-key s))))))
+
+(def ^:private canonical-handlers
+  {clojure.lang.PersistentHashSet canonical-set-handler
+   clojure.lang.PersistentTreeSet canonical-set-handler})
+
 (defn- transit-encode
   "Encode a value to Transit JSON bytes."
   ^bytes [obj]
   (let [out (ByteArrayOutputStream.)]
     (-> out
-        (transit/writer :json)
+        (transit/writer :json {:handlers canonical-handlers})
         (transit/write obj))
     (.toByteArray out)))
 
@@ -110,7 +124,6 @@
   Uses zstd frame detection to determine if decompression is needed.
 
   Note: The deserialized value may differ from the original in type:
-  - Sets become vectors (elements preserved)
   - Plain integers become BigInt (numeric equality preserved)
   - Metadata is not preserved"
   [^bytes bs]

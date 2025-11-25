@@ -30,7 +30,7 @@ Transit over JSON with RFC 8785 (JSON Canonicalization Scheme) does not provide 
 This library pre-normalizes data structures before Transit encoding:
 
 - **Maps**: Entries sorted by a canonical key comparator
-- **Sets**: Converted to sorted vectors
+- **Sets**: Elements serialized in canonical order (custom Transit handler)
 - **Integers**: Converted to BigInt to preserve type distinction through canonicalization
 - **Metadata**: Stripped (intentional for canonicalization)
 
@@ -99,7 +99,6 @@ Test if two values produce identical canonical bytes.
 | Original Type | After Roundtrip |
 |---------------|-----------------|
 | `Long`/`Integer` | `BigInt` |
-| `Set` | `Vector` |
 | Metadata | Stripped |
 
 ### Values That Cannot Be Canonicalized
@@ -114,15 +113,6 @@ Plain integers become BigInt after roundtrip. Numeric equality is preserved, but
 ```clojure
 (= 42 (-> 42 serialize deserialize))  ;; => true
 (= (type 42) (type (-> 42 serialize deserialize)))  ;; => false (BigInt)
-```
-
-### Set Semantics
-
-Sets become vectors after roundtrip. Elements are preserved but type changes:
-
-```clojure
-(= (set #{1 2 3}) (set (-> #{1 2 3} serialize deserialize)))  ;; => true
-(set? (-> #{1 2 3} serialize deserialize))  ;; => false (vector)
 ```
 
 ## Compression Determinism

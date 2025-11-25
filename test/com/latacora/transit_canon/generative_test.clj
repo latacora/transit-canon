@@ -32,15 +32,13 @@
     gen/symbol-ns]))
 
 (def serializable-gen
-  "Generator for nested data structures that can be serialized.
-  Note: Sets will become vectors after roundtrip."
+  "Generator for nested data structures that can be serialized."
   (gen/recursive-gen
    (fn [inner-gen]
      (gen/one-of
       [(gen/list inner-gen)
        (gen/vector inner-gen)
-       ;; Exclude sets from roundtrip generator because they become vectors
-       ;; (gen/set inner-gen)
+       (gen/set inner-gen)
        ;; Use strings as map keys to avoid complex key ordering issues
        (gen/map gen/string inner-gen)]))
    serializable-scalar-gen))
@@ -107,13 +105,13 @@
       (is (java.util.Arrays/equals (canon/serialize s1) (canon/serialize s2)))
       (is (java.util.Arrays/equals (canon/serialize s2) (canon/serialize s3))))))
 
-(deftest set-elements-preserved-property
-  (checking "Sets roundtrip to vectors with same elements" 200
+(deftest set-roundtrip-property
+  (checking "Sets roundtrip correctly" 200
     [elements (gen/vector-distinct serializable-scalar-gen {:min-elements 0 :max-elements 10})]
     (let [s (set elements)
           result (-> s canon/serialize canon/deserialize)]
-      (is (vector? result) "Sets deserialize as vectors")
-      (is (= (set s) (set result)) "Elements are preserved"))))
+      (is (set? result) "Sets deserialize as sets")
+      (is (= s result) "Elements are preserved"))))
 
 (deftest metadata-ignored-property
   (checking "Metadata is ignored in serialization" 100
@@ -148,11 +146,11 @@
         (is (= original result) "Numeric equality preserved")
         (is (instance? clojure.lang.BigInt result) "Type changed to BigInt")))
 
-    (t/testing "Sets become vectors"
+    (t/testing "Sets roundtrip correctly"
       (let [original #{1 2 3}
             result (-> original canon/serialize canon/deserialize)]
-        (is (= (set original) (set result)) "Elements preserved")
-        (is (vector? result) "Type changed to vector")))
+        (is (set? result) "Sets remain sets")
+        (is (= original result) "Set equality preserved")))
 
     (t/testing "Metadata is stripped"
       (let [original (with-meta {:a 1} {:source "test"})

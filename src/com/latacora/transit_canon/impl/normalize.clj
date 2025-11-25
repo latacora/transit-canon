@@ -58,10 +58,10 @@
          (sort-by (comp cmp/value->sort-key key))
          (into (array-map)))
 
+    ;; Sets are kept as sets - canonical ordering is handled by Transit writer
+    ;; We just strip metadata here
     (set? x)
-    (->> x
-         (sort-by cmp/value->sort-key)
-         vec)
+    x
 
     (number? x)
     (normalize-number x)

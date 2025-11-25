@@ -41,12 +41,12 @@
           (is (= data deserialized)
               (str "Roundtrip should preserve: " (pr-str data)))))))
 
-  (testing "Sets roundtrip with element preservation"
+  (testing "Sets roundtrip correctly"
     (let [s #{"keyword" :key 'symbol}
           serialized (canon/serialize s)
           deserialized (canon/deserialize serialized)]
-      (is (vector? deserialized) "Sets deserialize as vectors")
-      (is (= (set s) (set deserialized)) "Set elements are preserved"))))
+      (is (set? deserialized) "Sets deserialize as sets")
+      (is (= s deserialized) "Set elements are preserved"))))
 
 (deftest raw-compression-determinism
   (testing "Raw compress function is deterministic"
