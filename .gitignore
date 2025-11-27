@@ -27,6 +27,3 @@ Thumbs.db
 # REPL history
 .lein-repl-history
 .rebel_readline_history
-
-# Project-specific
-prompt.md
