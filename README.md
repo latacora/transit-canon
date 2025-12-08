@@ -137,6 +137,31 @@ This library prioritizes correctness and determinism over performance. Expect ov
 
 Benchmarks TBD.
 
+### How We Solved Transit's Top-Down Serialization
+
+Transit serializes top-down: parent handlers run before children are serialized. To sort map keys or set elements canonically, we need their serialized form—but that form isn't available until after we've already decided on ordering.
+
+This creates a fundamental tension:
+
+1. To sort, we need serialized forms
+2. To serialize, Transit walks top-down
+3. Children aren't serialized when parent handler runs
+
+**Solution: decorate-sort-undecorate with raw emission**
+
+We solved this with a custom `JsonEmitter` subclass (via Clojure's `gen-class`) that can emit pre-serialized JSON directly:
+
+1. **Decorate**: Serialize each sortable key/element to get its sort key, wrap in `Decorated{value, json-string}`
+2. **Sort**: Order entries by the decorated sort key
+3. **Undecorate**: Convert `Decorated` → `RawJson` which holds the pre-serialized string
+4. **Emit**: Our custom emitter writes `RawJson` content directly without re-serialization
+
+This eliminates double-serialization while leveraging Transit's existing machinery for recursion, type dispatch, and string caching.
+
+**Why gen-class instead of proxy?**
+
+Java's `proxy` cannot intercept internal method calls within a class hierarchy. When `AbstractEmitter.emitArray()` calls `this.marshal()`, it bypasses proxy overrides. Clojure's `gen-class` creates a true Java subclass where virtual dispatch works correctly, allowing us to intercept all `marshal()` calls including recursive ones.
+
 ## Development
 
 ```bash
