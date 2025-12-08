@@ -1,4 +1,4 @@
-{:paths ["src" "resources"]
+{:paths ["src" "resources" "classes"]
  :deps
  {org.clojure/clojure {:mvn/version "1.12.3"}
 
@@ -17,9 +17,15 @@
    :jvm-opts ["--enable-native-access=ALL-UNNAMED"]
    :extra-deps
    {org.clojure/test.check {:mvn/version "1.1.1"}
-    com.gfredericks/test.chuck {:mvn/version "0.2.15"}}}
+    com.gfredericks/test.chuck {:mvn/version "0.2.15"}
+    ;; Profiling
+    com.taoensso/tufte {:mvn/version "2.6.3"}}}
 
   :test
   {:main-opts ["-m" "kaocha.runner"]
    :extra-deps
-   {lambdaisland/kaocha {:mvn/version "1.91.1392"}}}}}
+   {lambdaisland/kaocha {:mvn/version "1.91.1392"}}}
+
+  ;; AOT compile gen-class namespaces
+  :aot
+  {:main-opts ["-e" "(compile 'com.latacora.transit-canon.impl.raw-emitter)"]}}}
