@@ -14,9 +14,10 @@
 
   ## Solution
 
-  This library pre-normalizes data structures before Transit encoding:
-  - Maps are sorted by a canonical key comparator
-  - Sets are serialized with elements in canonical order
+  This library uses Schwartzian transform (decorate-sort-undecorate):
+  - Compute sort keys once per element using pr-str
+  - Sort by the pre-computed keys
+  - Let Transit serialize the sorted result
   - Integers are converted to BigInt to preserve type distinction
 
   ## API
@@ -45,28 +46,115 @@
    :compression-level 3
    :strict? false})
 
-;; Custom Transit write handler for sets that outputs elements in canonical order.
-;; This handler is passed to our writer instance only - it doesn't affect global state
-;; or other Transit users.
+;; String-based sort key for cross-type or non-Comparable values.
+;; Type prefixes ensure consistent cross-type ordering.
+(defn- str-sort-key [x]
+  (cond
+    (nil? x)     "0"
+    (keyword? x) (str "1" (when-let [ns (namespace x)] (str ns "/")) (name x))
+    (string? x)  (str "2" x)
+    (integer? x) (str "3" x)
+    (symbol? x)  (str "4" (when-let [ns (namespace x)] (str ns "/")) (name x))
+    :else        (str "9" (pr-str x))))
+
+;; String-based sorting using Schwartzian transform.
+;; Used as fallback when native compare fails.
+(defn- string-sort-entries [m]
+  (->> m
+       (map (fn [[k v]] [(str-sort-key k) k v]))
+       (sort-by first)
+       (map (fn [[_ k v]] (clojure.lang.MapEntry. k v)))))
+
+;; Wrapper type for sorted sequences.
+;; Transit needs a non-seq type to emit as plain JSON array (seqs get ~#list tag).
+;; This wrapper holds the seq without copying, and has its own handler.
+(deftype SortedSeqWrapper [s]
+  clojure.lang.Seqable
+  (seq [_] s))
+
+(defn- string-sort-elements [s]
+  (->> s
+       (map (fn [x] [(str-sort-key x) x]))
+       (sort-by first)
+       (map second)
+       ->SortedSeqWrapper))
+
+;; Custom Transit write handler for maps.
+;; Optimistically tries native sorting (fast path for homogeneous Comparable keys),
+;; falls back to string-based Schwartzian transform on ClassCastException.
+(def ^:private canonical-map-handler
+  (transit/write-handler
+   (constantly "map")
+   (fn [m]
+     (try
+       (sort-by key m)
+       (catch ClassCastException _
+         (string-sort-entries m))))))
+
+;; Custom Transit write handler for sets.
+;; Optimistically tries native sorting, falls back to string-based on failure.
+;; Returns SortedSeqWrapper to avoid copying (wrapper handler emits seq as array).
 (def ^:private canonical-set-handler
   (transit/write-handler
    (constantly "set")
    (fn [s]
-     ;; Sort elements by their canonical serialization for deterministic output
-     (let [sort-key (requiring-resolve 'com.latacora.transit-canon.impl.comparators/value->sort-key)]
-       (vec (sort-by sort-key s))))))
+     (try
+       (->SortedSeqWrapper (sort s))
+       (catch ClassCastException _
+         (string-sort-elements s))))))
+
+;; Handler for SortedSeqWrapper - emits contents as plain JSON array.
+;; The "array" tag tells Transit to serialize as [...] without any wrapper tag.
+(def ^:private sorted-seq-wrapper-handler
+  (transit/write-handler
+   (constantly "array")
+   seq))
+
+;; Number handlers that convert to BigInt to preserve int/float distinction.
+;; Without this, Transit serializes Long as JSON numbers which RFC 8785
+;; could canonicalize differently than BigInt strings.
+(def ^:private long-handler
+  (transit/write-handler
+   (constantly "n")  ;; BigInt tag
+   (fn [n] (str (bigint n)))))
+
+(def ^:private integer-handler
+  (transit/write-handler
+   (constantly "n")
+   (fn [n] (str (bigint n)))))
+
+(def ^:private short-handler
+  (transit/write-handler
+   (constantly "n")
+   (fn [n] (str (bigint n)))))
+
+(def ^:private byte-handler
+  (transit/write-handler
+   (constantly "n")
+   (fn [n] (str (bigint n)))))
 
 (def ^:private canonical-handlers
-  {clojure.lang.PersistentHashSet canonical-set-handler
-   clojure.lang.PersistentTreeSet canonical-set-handler})
+  {;; Maps - all map types need sorting
+   clojure.lang.PersistentArrayMap canonical-map-handler
+   clojure.lang.PersistentHashMap canonical-map-handler
+   clojure.lang.PersistentTreeMap canonical-map-handler
+   ;; Sets - all set types need sorting
+   clojure.lang.PersistentHashSet canonical-set-handler
+   clojure.lang.PersistentTreeSet canonical-set-handler
+   ;; Wrapper for sorted sequences (emits as plain array, no copy)
+   SortedSeqWrapper sorted-seq-wrapper-handler
+   ;; Numbers - convert to BigInt to preserve int/float distinction
+   java.lang.Long long-handler
+   java.lang.Integer integer-handler
+   java.lang.Short short-handler
+   java.lang.Byte byte-handler})
 
 (defn- transit-encode
-  "Encode a value to Transit JSON bytes."
+  "Encode a value to Transit JSON bytes using canonical handlers.
+  Maps and sets are sorted by Schwartzian transform for efficiency."
   ^bytes [obj]
   (let [out (ByteArrayOutputStream.)]
-    (-> out
-        (transit/writer :json {:handlers canonical-handlers})
-        (transit/write obj))
+    (transit/write (transit/writer out :json {:handlers canonical-handlers}) obj)
     (.toByteArray out)))
 
 (defn- json-canonicalize
@@ -88,10 +176,12 @@
   "Serializes a Clojure value to a canonicalized byte array.
 
   The serialization pipeline:
-  1. Normalize: sort maps, convert sets to vectors, fix numeric types
-  2. Transit encode: convert to JSON with Transit's type preservation
-  3. JSON canonicalize: apply RFC 8785 canonicalization
-  4. Compress: apply zstd compression (optional)
+  1. Transit encode: convert to JSON with canonical handlers
+     - Maps sorted by serialized key
+     - Sets sorted by serialized element
+     - Integers converted to BigInt (preserves int/float distinction)
+  2. JSON canonicalize: apply RFC 8785 (number formatting)
+  3. Compress: apply zstd compression (optional)
 
   Options:
   - :compress?         - Apply compression (default: true)
@@ -101,7 +191,7 @@
   Returns a byte array, or throws if :strict? is true and the value
   cannot be canonicalized.
 
-  Note: Metadata is ignored for canonicalization purposes."
+  Note: Metadata is ignored by Transit and does not affect output."
   (^bytes [obj]
    (serialize obj {}))
   (^bytes [obj opts]
@@ -110,8 +200,7 @@
      (when (and strict? (not (canonical? obj)))
        (throw (ex-info "Value cannot be canonicalized"
                        {:value obj})))
-     (let [normalized (normalize/normalize obj)
-           transit-bytes (transit-encode normalized)
+     (let [transit-bytes (transit-encode obj)
            canonical-bytes (json-canonicalize transit-bytes)]
        (if compress?
          (compress/compress canonical-bytes compression-level)
