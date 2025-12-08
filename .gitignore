@@ -4,6 +4,7 @@
 *.jar
 *.class
 target/
+classes/
 
 # Editor
 .idea/

@@ -1,6 +1,13 @@
 {:tasks
- {test
+ {aot
+  {:doc "AOT compile gen-class namespaces"
+   :task (do
+           (shell "mkdir -p classes")
+           (clojure "-M:aot"))}
+
+  test
   {:doc "Run tests, passing additional arguments to kaocha"
+   :depends [aot]
    :task (apply clojure "-M:dev:test" *command-line-args*)}
 
   lint
