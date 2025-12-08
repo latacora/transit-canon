@@ -1,27 +1,22 @@
 (ns com.latacora.transit-canon.impl.normalize
   "Normalize Clojure data structures for canonical serialization.
 
-  ## The problem
+  ## Responsibilities
 
-  Transit encodes maps as JSON arrays (not objects), so RFC 8785's
-  object key sorting doesn't apply. Clojure hash-maps preserve
-  insertion order, meaning the same logical map can serialize
-  differently based on construction history.
+  This namespace handles:
+  1. Number normalization (Long -> BigInt to preserve int/float distinction)
+  2. Metadata stripping
 
-  ## The solution
+  ## What this namespace does NOT handle
 
-  Pre-normalize all data structures before Transit encoding:
-  1. Sort map entries by canonical key comparison
-  2. Sort set elements by canonical comparison
-  3. Convert problematic numeric types to tagged forms
+  Map and set ordering is handled by Transit write handlers in core.clj
+  using the decorate-sort-undecorate pattern with raw JSON emission.
 
   ## Known limitations
 
   - Metadata is stripped (by design)
-  - Custom types may not compare correctly (falls back to hash)
   - Performance overhead from deep walking"
   (:require
-   [com.latacora.transit-canon.impl.comparators :as cmp]
    [clojure.walk :as walk]))
 
 (defn normalize-number
@@ -53,20 +48,10 @@
   "Normalize a single value for canonical serialization."
   [x]
   (cond
-    (map? x)
-    (->> x
-         (sort-by (comp cmp/value->sort-key key))
-         (into (array-map)))
-
-    ;; Sets are kept as sets - canonical ordering is handled by Transit writer
-    ;; We just strip metadata here
-    (set? x)
-    x
-
     (number? x)
     (normalize-number x)
 
-    ;; Strip metadata
+    ;; Strip metadata from metadata-capable objects
     (instance? clojure.lang.IObj x)
     (with-meta x nil)
 
@@ -76,10 +61,11 @@
   "Recursively normalize a Clojure value for canonical serialization.
 
   Transformations applied:
-  - Maps: entries sorted by canonical key comparison, stored in array-map
-  - Sets: converted to sorted vectors (restores set semantics on deserialize)
   - Numbers: longs converted to bigint to preserve int/float distinction
   - Metadata: stripped from all values
+
+  Note: Map and set ordering is handled by Transit write handlers,
+  not by this normalization step.
 
   Returns a normalized value suitable for Transit encoding."
   [obj]
