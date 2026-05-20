@@ -39,7 +39,7 @@
   (^bytes [^bytes data]
    (compress data default-compression-level))
   (^bytes [^bytes data compression-level]
-   (Zstd/compress data compression-level)))
+   (Zstd/compress data (int compression-level))))
 
 (defn decompress
   "Decompress zstd-compressed bytes.

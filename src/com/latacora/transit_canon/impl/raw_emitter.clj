@@ -19,9 +19,8 @@
   (:require
    [cognitect.transit :as transit])
   (:import
-   [com.cognitect.transit.impl WriteHandlerMap WriteCache]
-   [com.fasterxml.jackson.core JsonGenerator JsonFactory]
-   [java.io OutputStream]))
+   [com.cognitect.transit.impl WriteHandlerMap]
+   [com.fasterxml.jackson.core JsonGenerator]))
 
 ;; Marker type for pre-serialized JSON that should be emitted verbatim
 (deftype RawJson [^String json-str]
@@ -38,8 +37,8 @@
   [x]
   (instance? RawJson x))
 
-;; gen-class for a JsonEmitter subclass that handles RawJson
-;; The :exposes-methods allows us to call the superclass marshal
+;; gen-class for a JsonEmitter subclass that handles RawJson and canonical floats.
+;; Overrides emitDouble (not marshal) so we only pay gen-class overhead for floats.
 (gen-class
   :name com.latacora.transit_canon.impl.CanonicalEmitter
   :extends com.cognitect.transit.impl.JsonEmitter
@@ -50,18 +49,44 @@
                   com.cognitect.transit.impl.WriteHandlerMap
                   com.cognitect.transit.WriteHandler]}
   :exposes {gen {:get getGen}}
-  :exposes-methods {marshal superMarshal}
+  :exposes-methods {marshal superMarshal
+                    emitDouble superEmitDouble}
   :prefix "emitter-")
 
-(defn emitter-marshal
+(defn- canonical-float-str
+  "Convert a float/double to RFC 8785 canonical string.
+  Removes unnecessary .0 suffix from whole numbers."
+  ^String [^double d]
+  (if (== d (long d))
+    (str (long d))
+    (str d)))
+
+;; NOTE: marshal override commented out to test emitDouble-only performance
+;; Uncomment if RawJson support is needed
+#_(defn emitter-marshal
   "Override marshal to handle RawJson specially.
-  When we encounter RawJson, emit its string directly without re-serialization."
+  RawJson values are emitted directly without re-serialization."
   [this o as-map-key ^WriteCache cache]
   (if (instance? RawJson o)
-    ;; Emit pre-serialized JSON directly
     (.writeRawValue (.getGen this) ^String (.json-str ^RawJson o))
-    ;; Delegate to parent for normal values
     (.superMarshal this o as-map-key cache)))
+
+;; Override emitDouble to emit canonical format (1.0 -> 1)
+;; Three overloads for primitive double, primitive float, and boxed Object
+(defn emitter-emitDouble-double-boolean-WriteCache
+  "Emit a primitive double in RFC 8785 canonical format."
+  [this ^double d _as-map-key _cache]
+  (.writeRawValue (.getGen this) ^String (canonical-float-str d)))
+
+(defn emitter-emitDouble-float-boolean-WriteCache
+  "Emit a primitive float in RFC 8785 canonical format."
+  [this f _as-map-key _cache]
+  (.writeRawValue (.getGen this) ^String (canonical-float-str (double f))))
+
+(defn emitter-emitDouble-Object-boolean-WriteCache
+  "Emit a boxed Double/Float in RFC 8785 canonical format."
+  [this ^Object o _as-map-key _cache]
+  (.writeRawValue (.getGen this) ^String (canonical-float-str (double o))))
 
 (defn- clj-map->java-map
   "Convert a Clojure map to a java.util.HashMap.
