@@ -1,5 +1,7 @@
 {:tasks
- {aot
+ {:requires ([babashka.process :refer [sh]])
+
+  aot
   {:doc "AOT compile gen-class namespaces"
    :task (do
            (shell "mkdir -p classes")
@@ -15,5 +17,9 @@
    :task (shell "clj-kondo --lint src test")}
 
   maint
-  {:doc "Check for outdated dependencies using antq"
-   :task (shell "clojure -Sdeps '{:deps {com.github.liquidz/antq {:mvn/version \"RELEASE\"}}}' -M -m antq.core")}}}
+  {:doc "Check for outdated dependencies and sync clj-kondo configs"
+   :task (do
+           (shell {:continue true} "clojure -Sdeps '{:deps {com.github.liquidz/antq {:mvn/version \"RELEASE\"}}}' -M -m antq.core")
+           (let [cp (-> (sh "clojure" "-Spath" "-A:dev:test") :out)]
+             (shell "clj-kondo" "--copy-configs" "--dependencies" "--parallel"
+                    "--lint" "src" "test" "--classpath" cp)))}}}
