@@ -6,11 +6,19 @@ Canonical serialization for Clojure data using Transit.
 
 ```bash
 bb test       # Run tests via Kaocha
-bb lint       # Run clj-kondo linter
-bb maint      # Check for outdated dependencies
+bb lint       # Run clj-kondo linter (also runs as pre-commit hook)
+bb maint      # Check for outdated dependencies + sync clj-kondo configs
 ```
 
-Run tests after each change to verify nothing broke.
+Run `bb test` after each change to verify nothing broke. Run `bb maint` whenever deps change (including after updates) to keep clj-kondo configs in sync.
+
+## Performance
+
+This library is performance-sensitive. The serialization hot path runs on every call.
+
+- **No reflection warnings**: all Java interop must be type-hinted. Verify with `(set! *warn-on-reflection* true)` at the REPL or check that `bb test` stays clean (AOT compilation surfaces reflection errors).
+- **Benchmarking**: use criterium (`criterium.core/quick-bench`) for any performance measurements. See `test/com/latacora/transit_canon/benchmark.clj`. The naive `time`/`dotimes` pattern is not reliable on the JVM.
+- **gitdep-friendly**: avoid Java source files (`src-java/`). Consumers cannot easily compile Java sources from a git dep. The gen-class emitter in `raw_emitter.clj` is the intentional approach.
 
 ## Project Structure
 
