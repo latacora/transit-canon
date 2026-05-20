@@ -24,6 +24,7 @@ Thumbs.db
 # Local config
 .envrc
 .env
+.claude/settings.local.json
 
 # REPL history
 .lein-repl-history
