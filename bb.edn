@@ -19,7 +19,10 @@
   maint
   {:doc "Check for outdated dependencies and sync clj-kondo configs"
    :task (do
-           (shell {:continue true} "clojure -Sdeps '{:deps {com.github.liquidz/antq {:mvn/version \"RELEASE\"}}}' -M -m antq.core")
+           ;; slf4j-nop silences antq's "Failed to load StaticLoggerBinder"
+           ;; warning. Scoped to this invocation only so it stays out of the
+           ;; library's published classpath.
+           (shell {:continue true} "clojure -Sdeps '{:deps {com.github.liquidz/antq {:mvn/version \"RELEASE\"} org.slf4j/slf4j-nop {:mvn/version \"2.0.17\"}}}' -M -m antq.core")
            (let [cp (-> (sh "clojure" "-Spath" "-A:dev:test") :out)]
              (shell "clj-kondo" "--copy-configs" "--dependencies" "--parallel"
                     "--lint" "src" "test" "--classpath" cp)))}}}
