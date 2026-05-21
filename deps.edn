@@ -1,22 +1,22 @@
 {:paths ["src" "resources" "classes"]
  :deps
- {org.clojure/clojure {:mvn/version "1.12.3"}
+ {org.clojure/clojure {:mvn/version "1.12.5"}
 
   ;; Transit serialization
-  com.cognitect/transit-clj {:mvn/version "1.0.333"}
+  com.cognitect/transit-clj {:mvn/version "1.1.357"}
 
   ;; JSON canonicalization (RFC 8785)
   io.github.erdtman/java-json-canonicalization {:mvn/version "1.1"}
 
   ;; Compression (determinism under investigation)
-  com.github.luben/zstd-jni {:mvn/version "1.5.7-6"}}
+  com.github.luben/zstd-jni {:mvn/version "1.5.7-9"}}
 
  :aliases
  {:dev
   {:extra-paths ["test"]
    :jvm-opts ["--enable-native-access=ALL-UNNAMED"]
    :extra-deps
-   {org.clojure/test.check {:mvn/version "1.1.1"}
+   {org.clojure/test.check {:mvn/version "1.1.3"}
     com.gfredericks/test.chuck {:mvn/version "0.2.15"}
     criterium/criterium {:mvn/version "0.4.6"}}}
 
