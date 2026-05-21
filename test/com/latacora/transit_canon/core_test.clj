@@ -1,7 +1,10 @@
 (ns com.latacora.transit-canon.core-test
   (:require
    [clojure.test :as t :refer [deftest is testing]]
-   [com.latacora.transit-canon.core :as canon]))
+   [cognitect.transit :as transit]
+   [com.latacora.transit-canon.core :as canon])
+  (:import
+   (java.time LocalDate)))
 
 (deftest basic-serialization-roundtrip
   (testing "Basic types roundtrip correctly"
@@ -128,6 +131,47 @@
           m2 (zipmap [:b :a] [2 1])]
       (is (canon/canonical-bytes= m1 m2))
       (is (not (canon/canonical-bytes= m1 {:a 1 :b 3}))))))
+
+(def ^:private local-date-write
+  (transit/write-handler (constantly "local-date") str))
+
+(def ^:private local-date-read
+  (transit/read-handler #(LocalDate/parse %)))
+
+(deftest custom-handlers
+  (testing "User write+read handlers roundtrip a non-canonicalizable type"
+    (let [d (LocalDate/of 2026 5 20)
+          opts {:handlers {LocalDate local-date-write}}
+          bs (canon/serialize d opts)
+          read-opts {:handlers {"local-date" local-date-read}}]
+      (is (= d (canon/deserialize bs read-opts)))))
+
+  (testing "User handlers can be nested inside canonical containers"
+    (let [d1 (LocalDate/of 2026 1 1)
+          d2 (LocalDate/of 2026 12 31)
+          v {:start d1 :end d2 :tags #{:a :b}}
+          opts {:handlers {LocalDate local-date-write}}
+          bs (canon/serialize v opts)
+          read-opts {:handlers {"local-date" local-date-read}}]
+      (is (= v (canon/deserialize bs read-opts)))))
+
+  (testing "Built-in handlers cannot be overridden by user handlers"
+    (let [bogus-map-handler (transit/write-handler (constantly "broken")
+                                                   (fn [_] "should-never-run"))
+          opts {:handlers {clojure.lang.PersistentArrayMap bogus-map-handler}}
+          m1 (zipmap [:a :b :c] [1 2 3])
+          m2 (zipmap [:c :b :a] [3 2 1])]
+      (is (java.util.Arrays/equals (canon/serialize m1 opts)
+                                   (canon/serialize m2 opts))
+          "Map sorting still works despite user trying to override map handler")
+      (is (= m1 (canon/deserialize (canon/serialize m1 opts))))))
+
+  (testing "serialize-uncompressed forwards :handlers"
+    (let [d (LocalDate/of 2026 5 20)
+          opts {:handlers {LocalDate local-date-write}}
+          bs (canon/serialize-uncompressed d opts)]
+      (is (= (byte \[) (aget bs 0)) "Uncompressed Transit JSON starts with [")
+      (is (= d (canon/deserialize bs {:handlers {"local-date" local-date-read}}))))))
 
 (deftest canonical?-check
   (testing "canonical? returns true for normal values"

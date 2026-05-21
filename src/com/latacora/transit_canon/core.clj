@@ -151,10 +151,14 @@
 
 (defn- transit-encode
   "Encode a value to Transit JSON bytes using canonical handlers.
-  Maps and sets are sorted by Schwartzian transform for efficiency."
-  ^bytes [obj]
-  (let [out (ByteArrayOutputStream.)]
-    (transit/write (transit/writer out :json {:handlers canonical-handlers}) obj)
+  Maps and sets are sorted by Schwartzian transform for efficiency.
+
+  Built-in canonical handlers (map sorting, Long->BigInt, SortedSeqWrapper)
+  always win over user-supplied handlers for the same class."
+  ^bytes [obj user-handlers]
+  (let [out (ByteArrayOutputStream.)
+        handlers (merge user-handlers canonical-handlers)]
+    (transit/write (transit/writer out :json {:handlers handlers}) obj)
     (.toByteArray out)))
 
 (defn- json-canonicalize
@@ -165,11 +169,11 @@
       .getEncodedUTF8))
 
 (defn- transit-decode
-  "Decode Transit JSON bytes to a value."
-  [^bytes json-bytes]
-  (-> json-bytes
-      ByteArrayInputStream.
-      (transit/reader :json)
+  "Decode Transit JSON bytes to a value, optionally with user-supplied
+  read handlers merged into the reader's defaults."
+  [^bytes json-bytes user-handlers]
+  (-> (ByteArrayInputStream. json-bytes)
+      (transit/reader :json {:handlers user-handlers})
       transit/read))
 
 (defn serialize
@@ -187,6 +191,10 @@
   - :compress?         - Apply compression (default: true)
   - :compression-level - Zstd level 1-22 (default: 3)
   - :strict?           - Throw on non-canonicalizable values (default: false)
+  - :handlers          - Map of class -> transit write-handler for types not
+                         covered by the built-in canonical handlers.
+                         Built-in handlers (maps, sets, integers, etc.) take
+                         precedence and cannot be overridden.
 
   Returns a byte array, or throws if :strict? is true and the value
   cannot be canonicalized.
@@ -195,12 +203,12 @@
   (^bytes [obj]
    (serialize obj {}))
   (^bytes [obj opts]
-   (let [{:keys [compress? compression-level strict?]}
+   (let [{:keys [compress? compression-level strict? handlers]}
          (merge default-opts opts)]
      (when (and strict? (not (canonical? obj)))
        (throw (ex-info "Value cannot be canonicalized"
                        {:value obj})))
-     (let [transit-bytes (transit-encode obj)
+     (let [transit-bytes (transit-encode obj handlers)
            canonical-bytes (json-canonicalize transit-bytes)]
        (if compress?
          (compress/compress canonical-bytes compression-level)
@@ -212,21 +220,28 @@
   Handles both compressed and uncompressed canonical bytes.
   Uses zstd frame detection to determine if decompression is needed.
 
+  Options:
+  - :handlers - Map of tag-string -> transit read-handler, merged with the
+                reader's default handlers.
+
   Note: The deserialized value may differ from the original in type:
   - Plain integers become BigInt (numeric equality preserved)
   - Metadata is not preserved"
-  [^bytes bs]
-  (let [;; Try to detect if compressed by checking zstd magic number
-        ;; Zstd magic: 0x28 0xB5 0x2F 0xFD
-        is-zstd? (and (>= (alength bs) 4)
-                      (= (aget bs 0) (unchecked-byte 0x28))
-                      (= (aget bs 1) (unchecked-byte 0xB5))
-                      (= (aget bs 2) (unchecked-byte 0x2F))
-                      (= (aget bs 3) (unchecked-byte 0xFD)))
-        json-bytes (if is-zstd?
-                     (compress/decompress bs)
-                     bs)]
-    (transit-decode json-bytes)))
+  ([^bytes bs]
+   (deserialize bs {}))
+  ([^bytes bs opts]
+   (let [{:keys [handlers]} opts
+         ;; Try to detect if compressed by checking zstd magic number
+         ;; Zstd magic: 0x28 0xB5 0x2F 0xFD
+         is-zstd? (and (>= (alength bs) 4)
+                       (= (aget bs 0) (unchecked-byte 0x28))
+                       (= (aget bs 1) (unchecked-byte 0xB5))
+                       (= (aget bs 2) (unchecked-byte 0x2F))
+                       (= (aget bs 3) (unchecked-byte 0xFD)))
+         json-bytes (if is-zstd?
+                      (compress/decompress bs)
+                      bs)]
+     (transit-decode json-bytes handlers))))
 
 (defn canonical?
   "Test if a value can be canonicalized.
@@ -241,9 +256,11 @@
 
 (defn serialize-uncompressed
   "Convenience function for uncompressed canonical serialization.
-  Equivalent to (serialize obj {:compress? false})."
-  ^bytes [obj]
-  (serialize obj {:compress? false}))
+  Equivalent to (serialize obj (assoc opts :compress? false))."
+  (^bytes [obj]
+   (serialize-uncompressed obj {}))
+  (^bytes [obj opts]
+   (serialize obj (assoc opts :compress? false))))
 
 (defn canonical-bytes=
   "Test if two values produce identical canonical bytes.
